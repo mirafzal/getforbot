@@ -1,0 +1,7 @@
+[
+  { "name" : "margarita", "price" : 33000 },
+  { "name" : "peperoni" , "price" : 45000 },
+  { "name" : "tarantella", "price" : 51000 },
+  { "name" : "tre_gusti", "price" : 52600 },
+  { "name" : "amerikano_kon_peperoni", "price" : 52000 }
+]
