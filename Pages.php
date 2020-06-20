@@ -33,5 +33,9 @@ class Pages
         PAGE_ADMIN_DELETE_PRODUCT_CATEGORY = 'page_admin_delete_product_category',
         PAGE_ADMIN_DELETE_PRODUCT_NAME = 'page_admin_delete_product_name',
         // delete
-        PAGE_ADMIN_DELETE_CATEGORY = 'page_admin_delete_category';
+        PAGE_ADMIN_DELETE_CATEGORY = 'page_admin_delete_category',
+        // edit price
+        PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY = 'page_admin_edit_product_price',
+        PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT = 'page_admin_edit_product_price_choose_product',
+        PAGE_ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE = 'page_admin_edit_product_price_input_price';
 }

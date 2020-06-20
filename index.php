@@ -55,7 +55,7 @@ if ($callback_query !== null && $callback_query != '') {
     $user = new User($chatID);
 
     if (strpos($callback_data, 'back') !== false) {
-        showProduct($products->getProductById(substr($callback_data, 4)), true);
+        showProduct($products->getProduct(substr($callback_data, 4)), true);
     } elseif (is_numeric($callback_data)) {
         $user->setProductOption($callback_data);
         showChooseCount();
@@ -78,6 +78,18 @@ if ($callback_query !== null && $callback_query != '') {
             $telegram->editMessageText($content);
             showMainPage();
         }
+    } elseif (strpos($callback_data, "editProduct") !== false) {
+        $optionNum = substr($callback_data, 11);
+        $user->setProductOption($optionNum);
+        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'] - 1);
+        $telegram->deleteMessage($content);
+        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id']);
+        $telegram->deleteMessage($content);
+        $options = [[$telegram->buildKeyboardButton("❌ Bekor qilish")]];
+        $keyb = $telegram->buildKeyBoard($options, $onetime = false, $resize = true);
+        $content = ['chat_id' => $chatID, 'text' => "Tovarni narxini kiriting:", 'reply_markup' => $keyb];
+        $telegram->sendMessage($content);
+        $user->setPage(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE);
     }
 
     //answer nothing with answerCallbackQuery, because it is required
@@ -152,7 +164,7 @@ if ($callback_query !== null && $callback_query != '') {
                     if (in_array($text, $products->getNamesByCategoryId($user->getCategoryId()))) {
                         $productId = $products->getIdByName($text);
                         $user->setProductId($productId);
-                        showProduct($products->getProductById($productId));
+                        showProduct($products->getProduct($productId));
                     }
                     break;
             }
@@ -262,6 +274,9 @@ if ($callback_query !== null && $callback_query != '') {
                 case "➖ Kategoriya o'chirish":
                     showAdminChooseProductCategory(Pages::PAGE_ADMIN_DELETE_CATEGORY);
                     break;
+                case "Tovar narxini o'zgartirish":
+                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    break;
                 case $texts->getText("back_btn"):
                     showMainPage();
                     break;
@@ -299,9 +314,9 @@ if ($callback_query !== null && $callback_query != '') {
                         $filePath = $result['result']['file_path'];
                         $product = $user->getProduct();
                         $cnt = file_get_contents('photoCounter.txt');
-                        $localFilePath = 'photos/'.$cnt.".".explode(".",$filePath)[1];
+                        $localFilePath = 'photos/' . $cnt . "." . explode(".", $filePath)[1];
                         $telegram->downloadFile($filePath, $localFilePath);
-                        file_put_contents('photoCounter.txt', $cnt+1);
+                        file_put_contents('photoCounter.txt', $cnt + 1);
                         $product['photoUrl'] = $localFilePath;
                         $user->setProduct($product);
                         sendMessage("Rasm muvaffaqiyatli yuklandi.");
@@ -469,6 +484,49 @@ if ($callback_query !== null && $callback_query != '') {
 
             }
             break;
+        // edit price
+        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY:
+            switch ($text) {
+                case $texts->getText("back_btn"):
+                    showAdminPage();
+                    break;
+                default:
+                    if (in_array($text, $categories->getAllNames())) {
+                        $categoryId = $categories->getIdByName($text);
+                        $user->setCategoryId($categoryId);
+                        showAdminChooseProduct($categoryId, Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT);
+                        break;
+                    }
+            }
+            break;
+        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT:
+            switch ($text) {
+                case $texts->getText("back_btn"):
+                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    break;
+                default:
+                    if (in_array($text, $products->getNamesByCategoryId($user->getCategoryId()))) {
+                        showAdminSendProductNewPrice($text);
+                    }
+                    break;
+            }
+            break;
+        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE:
+            switch ($text) {
+                case "❌ Bekor qilish":
+                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    break;
+                default:
+                    $product = $products->getProduct($user->getProductId());
+                    $optionNum = $user->getProductOption();
+                    $product['options'][$optionNum]['price'] = $text;
+                    if (Products::updateProduct($product)) {
+                        sendMessage("Tovar narxi o'zgartirildi.");
+                        showAdminPage();
+                    }
+                    break;
+            }
+            break;
     }
 }
 
@@ -519,7 +577,7 @@ function showProductsPage($categoryId)
     }
 }
 
-function showProduct($product, $edit = false)
+function showProduct($product, $edit = false, $editPrice = "")
 {
     global $telegram, $chatID, $rootPath, $texts, $user, $callback_query;
 
@@ -542,7 +600,7 @@ function showProduct($product, $edit = false)
         for ($i = 0; $i < count($product['options']); $i++) {
             $name = $product['options'][$i]['name'];
             $price = number_format($product['options'][$i]['price'], 0, "", " ") . " " . $texts->getText('soum');
-            $option[] = [$telegram->buildInlineKeyboardButton($name . " - " . $price, '', $i . "")];
+            $option[] = [$telegram->buildInlineKeyboardButton($name . " - " . $price, '', $editPrice . $i . "")];
         }
         $keyb = $telegram->buildInlineKeyBoard($option);
         $content['reply_markup'] = $keyb;
@@ -601,7 +659,7 @@ function showCartPage()
         foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
             $productCount = $productArr['count'];
             $optionNum = $productArr['optionNum'];
-            $product = $products->getProductById($productArr['id']);
+            $product = $products->getProduct($productArr['id']);
             $price = ((int)($product['options'][$optionNum]['price'])) * ((int)($productCount));
             $overallPrice += $price;
             $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $TEXTS['pieces'] . " - " . number_format($price, 0, "", " ") . " " . $TEXTS['soum'] . "\n\n";
@@ -621,12 +679,14 @@ function showCartPage()
     }
 }
 
-function showCompanyPhoneNumber() {
+function showCompanyPhoneNumber()
+{
     sendMessage("Bizning telefon raqamimiz:
 +998977141171");
 }
 
-function showAbout() {
+function showAbout()
+{
     sendMessage("👏 Assalamu alaykum. Getfor kompaniyasi botiga xush kelibsiz!
 
 🚗 Getfor kompaniyasi oziq-ovqatlarni Toshkent shahri bo'ylab uyingizgacha yetkazib beradi.
@@ -643,7 +703,8 @@ function showAdminPage()
 {
     global $user;
     $user->setPage(Pages::PAGE_ADMIN);
-    $buttons = ["➕ Tovar qo'shish", "➕ Kategoriya qo'shish", "➖ Tovar o'chirish", "➖ Kategoriya o'chirish"];
+    $buttons = ["➕ Tovar qo'shish", "➕ Kategoriya qo'shish", "➖ Tovar o'chirish", "➖ Kategoriya o'chirish",
+        "Tovar narxini o'zgartirish"];
     $textToSend = "Admin Panelga xush kelibsiz!";
     sendTextWithKeyboard($buttons, $textToSend, true);
 }
@@ -713,14 +774,14 @@ function showAdminAddCategory()
     sendTextWithKeyboard([], "Kategoriya nomini kiriting.", true);
 }
 
-function showAdminChooseProduct($categoryId)
+function showAdminChooseProduct($categoryId, $page = Pages::PAGE_ADMIN_DELETE_PRODUCT_NAME)
 {
     global $user, $texts, $products;
     $buttons = $products->getNamesByCategoryId($categoryId);
     if (!$buttons) {
         sendMessage($texts->getText('page_products_text_no_product'));
     } else {
-        $user->setPage(Pages::PAGE_ADMIN_DELETE_PRODUCT_NAME);
+        $user->setPage($page);
         $textToSend = $texts->getText("page_products_text");
         sendTextWithKeyboard($buttons, $textToSend, true);
     }
@@ -808,7 +869,7 @@ function showProductsToClear($change = false)
 
     $option = [];
     foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
-        $product = $products->getProductById($productArr['id']);
+        $product = $products->getProduct($productArr['id']);
         $optionNum = $productArr['optionNum'];
         $option[] = [$telegram->buildInlineKeyboardButton($product['name'] . " " . $product['options'][$optionNum]['name'], "", "ggg"), $telegram->buildInlineKeyboardButton("❌", "", "id" . $product['id'] . ";" . $productArr['optionNum'])];
     }
@@ -879,7 +940,7 @@ function showConfirmOrderPage()
     foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
         $productCount = $productArr['count'];
         $optionNum = $productArr['optionNum'];
-        $product = $products->getProductById($productArr['id']);
+        $product = $products->getProduct($productArr['id']);
         $price = ((int)($product['options'][$optionNum]['price'])) * ((int)($productCount));
         $overallPrice += $price;
         $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $TEXTS['pieces'] . " - " . number_format($price, 0, "", " ") . " " . $TEXTS['soum'] . "\n\n";
@@ -899,7 +960,7 @@ function showConfirmOrderPage()
     $telegram->sendMessage($content);
 
     if ($user->getLongitude() != "" && $user->getLatitude() != "") {
-        $content = array('chat_id' => $chatID, 'latitude' => str_replace(",",".",$user->getLatitude()), 'longitude' => str_replace(",",".",$user->getLongitude()));
+        $content = array('chat_id' => $chatID, 'latitude' => str_replace(",", ".", $user->getLatitude()), 'longitude' => str_replace(",", ".", $user->getLongitude()));
         $telegram->sendLocation($content);
     }
 
@@ -946,4 +1007,15 @@ function showFirstNamePage()
     $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
     $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => "Iltimos, ismingizni kiriting:", 'parse_mode' => "HTML");
     $telegram->sendMessage($content);
+}
+
+function showAdminSendProductNewPrice($productName)
+{
+    global $user, $telegram, $chatID, $products;
+
+    $productId = $products->getIdByName($productName);
+    $user->setProductId($productId);
+
+    sendMessage("Tovar turini tanlang");
+    showProduct($products->getProduct($productId), false, "editProduct");
 }
