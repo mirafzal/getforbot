@@ -11,7 +11,7 @@ class Texts
         $this->lang = $lang;
     }
 
-    function getText($keyword)
+    function get($keyword)
     {
         global $db;
         $res = "";

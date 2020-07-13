@@ -43,13 +43,8 @@ class Categories
     function getIdByName($name) {
         global $db;
         $id = "";
-        $result = "";
         $name = $db->real_escape_string($name);
-        if ($this->lang == 'uz') {
-            $result = $db->query("SELECT * FROM `categories` WHERE uz='$name' LIMIT 1");
-        } elseif ($this->lang == 'ru') {
-            $result = $db->query("SELECT * FROM `categories` WHERE ru='$name' LIMIT 1");
-        }
+        $result = $db->query("SELECT * FROM `categories` WHERE {$this->lang}='$name' LIMIT 1");
         $arr = $result->fetch_assoc();
         if (isset($arr["id"])) {
             $id = $arr["id"];

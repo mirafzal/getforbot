@@ -24,8 +24,6 @@ $ADMINS_CHAT_IDS = [
     742826077
 ];
 
-$TEXTS = Texts::UZ;
-
 $NUMBERS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
 
 $callback_query = $telegram->Callback_Query();
@@ -40,11 +38,14 @@ if ($chatID == null) $chatID = $DEVELOPER_CHAT_ID;
 
 global $user, $texts, $categories, $products;
 
+$user = new User($chatID);
+$texts = new Texts($user->getLanguage());
+$categories = new Categories($user->getLanguage());
+$products = new Products($user->getLanguage());
+
 init();
 
-//$TEXTS = [];
-
-//switchLanguage();
+ini_set('precision', 100);
 
 // main logic
 
@@ -54,42 +55,54 @@ if ($callback_query !== null && $callback_query != '') {
     $chatID = $telegram->Callback_ChatID();
     $user = new User($chatID);
 
-    if (strpos($callback_data, 'back') !== false) {
-        showProduct($products->getProduct(substr($callback_data, 4)), true);
-    } elseif (is_numeric($callback_data)) {
-        $user->setProductOption($callback_data);
-        showChooseCount();
-    } elseif (substr($callback_data, 1) == 'count') {
-        $content = ['chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'text' => $texts->getText('product_added_to_cart')];
-        ShoppingCart::addNewOrder($chatID, $user->getProductId(), $callback_data[0], $user->getProductOption());
-        $telegram->editMessageText($content);
-        showMainPage();
-    } elseif ($callback_data == "closeWindow") {
-        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id']);
-        $telegram->deleteMessage($content);
-    } elseif (strpos($callback_data, "id") !== false) {
-        $id = substr($callback_data, 2);
-        $optionNum = explode(";", $callback_data);
-        ShoppingCart::deleteProduct($chatID, $id, $optionNum[1]);
-        if (ShoppingCart::getUserProducts($chatID)) {
-            showProductsToClear(true);
-        } else {
-            $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'text' => $TEXTS['cart_is_cleared']);
-            $telegram->editMessageText($content);
-            showMainPage();
-        }
-    } elseif (strpos($callback_data, "editProduct") !== false) {
+    if (strpos($callback_data, "editProduct") !== false) {
         $optionNum = substr($callback_data, 11);
+        $optionNum = explode(',', $optionNum);
+        $optionNum = substr($optionNum[0], 6);
         $user->setProductOption($optionNum);
         $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'] - 1);
         $telegram->deleteMessage($content);
         $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id']);
         $telegram->deleteMessage($content);
-        $options = [[$telegram->buildKeyboardButton("❌ Bekor qilish")]];
-        $keyb = $telegram->buildKeyBoard($options, $onetime = false, $resize = true);
-        $content = ['chat_id' => $chatID, 'text' => "Tovarni narxini kiriting:", 'reply_markup' => $keyb];
-        $telegram->sendMessage($content);
-        $user->setPage(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE);
+        sendTextWithKeyboard(["❌ Bekor qilish"], "Tovarni narxini kiriting:");
+        $user->setPage(Pages::ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE);
+    } elseif (strpos($callback_data, 'back') !== false) {
+        showProduct($products->getProduct(substr($callback_data, 4)), true);
+    } elseif (strpos($callback_data, 'count') !== false) {
+        $mdata = explode(',', $callback_data);
+        $optionNum = substr($mdata[1], 6);
+        $productId = substr($mdata[2], 9);
+        $content = ['chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'text' => $texts->get('product_added_to_cart')];
+        ShoppingCart::addNewOrder($chatID, $productId, $callback_data[0], $optionNum);
+        $options = [[$telegram->buildInlineKeyboardButton($texts->get('go_to_cart'), "", "shoppingcart")]];
+        $keyb = $telegram->buildInlineKeyBoard($options);
+        $content = ['chat_id' => $chatID, 'message_id' => $telegram->MessageID(), 'text' => $texts->get('product_added_to_cart'), 'reply_markup' => $keyb];
+        $telegram->editMessageText($content);
+    } elseif (strpos($callback_data, 'option') !== false) {
+        $mdata = explode(',', $callback_data);
+        $optionNum = substr($mdata[0], 6);
+        $productId = substr($mdata[1], 9);
+        $user->setProductOption($optionNum);
+        showChooseCount($productId, $optionNum);
+    } elseif ($callback_data == "closeWindow") {
+        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id']);
+        $telegram->deleteMessage($content);
+    } elseif ($callback_data == "shoppingcart") {
+        $content = ['chat_id' => $chatID, 'message_id' => $telegram->MessageID()];
+        $telegram->deleteMessage($content);
+        showCartPage();
+    } elseif (strpos($callback_data, 'id') !== false) {
+        $mdata = explode(",", $callback_data);
+        $id = substr($callback_data, 2);
+        $optionNum = $mdata[1];
+        ShoppingCart::deleteProduct($chatID, $id, $optionNum);
+        if (ShoppingCart::getUserProducts($chatID)) {
+            showProductsToClear(true);
+        } else {
+            $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'text' => "Savat bo'sh holatda");
+            $telegram->editMessageText($content);
+            showMainPage();
+        }
     }
 
     //answer nothing with answerCallbackQuery, because it is required
@@ -98,7 +111,7 @@ if ($callback_query !== null && $callback_query != '') {
 
 } elseif ($text == "/start") {
     $user->setLanguage('uz');
-    showMainPage();
+    showStart();
 } else {
     switch ($user->getPage()) {
         case Pages::START:
@@ -118,21 +131,26 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_MAIN:
+        case Pages::MAIN:
             switch ($text) {
-                case $texts->getText('page_main_btn_1'): // catalog
+                case $texts->get('page_main_btn_1'): // catalog
                     showCategoriesPage();
                     break;
-                case $texts->getText('page_main_btn_2'): // korzina
+                case $texts->get('page_main_btn_2'): // korzina
                     showCartPage();
                     break;
-                case $texts->getText('page_main_btn_3'): // qayta aloqa
+                case $texts->get('page_main_btn_3'): // qayta aloqa
                     showCompanyPhoneNumber();
                     break;
-                case $texts->getText('page_main_btn_4'): // bot haqida
+                case $texts->get('page_main_btn_4'): // bot haqida
                     showAbout();
                     break;
-                case $texts->getText('page_main_admin_btn'): // admin panel
+                case $texts->get('page_main_btn_5'): // bot haqida
+                    $user->setLanguage($user->getLanguage() == 'uz' ? 'ru' : 'uz');
+                    init();
+                    showMainPage();
+                    break;
+                case $texts->get('page_main_admin_btn'): // admin panel
                     if (in_array($chatID, $ADMINS_CHAT_IDS)) {
                         showAdminPage();
                     }
@@ -142,9 +160,9 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_CATALOG:
+        case Pages::CATALOG:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showMainPage();
                     break;
                 default:
@@ -155,10 +173,17 @@ if ($callback_query !== null && $callback_query != '') {
                     }
             }
             break;
-        case Pages::PAGE_PRODUCTS:
+        case Pages::PRODUCTS:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showCategoriesPage();
+                    break;
+                case $texts->get('show_all'):
+                    $productNames = $products->getNamesByCategoryId($user->getCategoryId());
+                    foreach ($productNames as $productName) {
+                        $productId = $products->getIdByName($productName);
+                        showProduct($products->getProduct($productId));
+                    }
                     break;
                 default:
                     if (in_array($text, $products->getNamesByCategoryId($user->getCategoryId()))) {
@@ -169,50 +194,45 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_PRODUCT_OPTIONS:
-            // callback
-            break;
-        case Pages::PAGE_PRODUCT_COUNT:
-            // callbackk
-            break;
-        case Pages::PAGE_SHOPPING_CART:
+        case Pages::SHOPPING_CART:
             switch ($text) {
-                case $TEXTS['order_count']:
+                case $texts->get('order_count'):
                     showCartPage();
                     break;
-                case $TEXTS['checkout']:
-                    showCheckoutPage();
+                case $texts->get('checkout'):
+                    $user->setOrderType('deliveryType');
+                    showFirstNamePage();
                     break;
-                case $TEXTS['change']:
+                case $texts->get('change'):
                     showProductsToClear();
                     break;
-                case $TEXTS['clear']:
+                case $texts->get('clear'):
                     showClearProducts();
                     break;
-                case $TEXTS['back_btn']:
+                case $texts->get('back_btn'):
                     showMainPage();
                     break;
             }
             break;
-        case Pages::PAGE_DELIVERY_TYPE:
+        case Pages::DELIVERY_TYPE:
             switch ($text) {
-                case $TEXTS['pickup']:
+                case $texts->get('pickup'):
                     $user->setOrderType('pickupType');
                     showFirstNamePage();
                     break;
-                case $TEXTS['delivery']:
+                case $texts->get('delivery'):
                     $user->setOrderType('deliveryType');
                     showFirstNamePage();
                     break;
-                case $TEXTS['back_btn']:
+                case $texts->get('back_btn'):
                     showCartPage();
                     break;
             }
             break;
-        case Pages::PAGE_FIRST_NAME:
+        case Pages::FIRST_NAME:
             switch ($text) {
-                case $TEXTS['back_btn']:
-                    showCheckoutPage();
+                case $texts->get('back_btn'):
+                    showCartPage();
                     break;
                 default:
                     $user->setFirstName($text);
@@ -224,10 +244,10 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_PHONE_NUMBER:
+        case Pages::PHONE_NUMBER:
             switch ($text) {
-                case $TEXTS['back_btn']:
-                    showFirstNamePage();
+                case $texts->get('back_btn'):
+                    showLocationPage();
                     break;
                 default:
                     if ($message['contact']['phone_number'] != "") {
@@ -239,16 +259,16 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_LOCATION:
+        case Pages::LOCATION:
             switch ($text) {
-                case $TEXTS['back_btn']:
+                case $texts->get('back_btn'):
                     showFirstNamePage();
                     break;
-                case $TEXTS['cant_send_location']:
-                    $user->setLatitude("");
-                    $user->setLongitude("");
-                    showPhoneNumberPage();
-                    break;
+//                case $texts->get('cant_send_location'):
+//                    $user->setLatitude("");
+//                    $user->setLongitude("");
+//                    showPhoneNumberPage();
+//                    break;
                 default:
                     if ($message['location']['latitude'] && $message['location']['longitude']) {
                         $user->setLatitude($message['location']['latitude']);
@@ -258,34 +278,49 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
+        case Pages::ORDER_CONFIRMATION:
+            switch ($text) {
+                case $texts->get('back_btn'):
+                    showPhoneNumberPage();
+                    break;
+                case $texts->get('do_order'):
+                    showOrderConfirmed();
+                    ShoppingCart::clearShoppingCart($user);
+                    break;
+                case $texts->get('cancel'):
+                    showOrderCanceled();
+                    break;
+
+            }
+            break;
         // admin page
-        case Pages::PAGE_ADMIN:
+        case Pages::ADMIN:
             switch ($text) {
                 case "➕ Tovar qo'shish":
                     $user->setProduct([]);
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_PRODUCT_CATEGORY);
+                    showAdminChooseProductCategory(Pages::ADMIN_PRODUCT_CATEGORY);
                     break;
                 case "➕ Kategoriya qo'shish":
                     showAdminAddCategory();
                     break;
                 case "➖ Tovar o'chirish":
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_DELETE_PRODUCT_CATEGORY);
+                    showAdminChooseProductCategory(Pages::ADMIN_DELETE_PRODUCT_CATEGORY);
                     break;
                 case "➖ Kategoriya o'chirish":
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_DELETE_CATEGORY);
+                    showAdminChooseProductCategory(Pages::ADMIN_DELETE_CATEGORY);
                     break;
                 case "Tovar narxini o'zgartirish":
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    showAdminChooseProductCategory(Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
                     break;
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showMainPage();
                     break;
             }
             break;
         // add product
-        case Pages::PAGE_ADMIN_PRODUCT_CATEGORY:
+        case Pages::ADMIN_PRODUCT_CATEGORY:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminPage();
                     break;
                 default:
@@ -300,10 +335,10 @@ if ($callback_query !== null && $callback_query != '') {
                     }
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_PHOTO:
+        case Pages::ADMIN_PRODUCT_PHOTO:
             switch ($text) {
-                case $texts->getText("back_btn"):
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_PRODUCT_CATEGORY);
+                case $texts->get("back_btn"):
+                    showAdminChooseProductCategory(Pages::ADMIN_PRODUCT_CATEGORY);
                     break;
                 default:
                     if (!$message['photo']) {
@@ -325,9 +360,9 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_NAME:
+        case Pages::ADMIN_PRODUCT_NAME:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminSendProductPhoto();
                     break;
                 default:
@@ -338,9 +373,9 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_INFO:
+        case Pages::ADMIN_PRODUCT_INFO:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminSendProductName();
                     break;
                 default:
@@ -353,9 +388,9 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_OPTIONS_NAME:
+        case Pages::ADMIN_PRODUCT_OPTIONS_NAME:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminSendProductInfo();
                     break;
                 default:
@@ -366,9 +401,9 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_OPTIONS_PRICE:
+        case Pages::ADMIN_PRODUCT_OPTIONS_PRICE:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminSendProductOptionsName();
                     break;
                 default:
@@ -380,18 +415,18 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_PRODUCT_OPTIONS_CONFIRM_OR_ADD_MORE:
+        case Pages::ADMIN_PRODUCT_OPTIONS_CONFIRM_OR_ADD_MORE:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminSendProductInfo();
                     break;
-                case $texts->getText("btn_add_more"):
+                case $texts->get("btn_add_more"):
                     $product = $user->getProduct();
                     $product['optionsCount'] = ((int)($product['optionsCount'])) + 1;
                     $user->setProduct($product);
                     showAdminSendProductOptionsName();
                     break;
-                case $texts->getText('btn_done'):
+                case $texts->get('btn_done'):
                     if (Products::addNewProduct($user->getProduct())) {
                         sendMessage("tovar qo'shildi");
                         showAdminPage();
@@ -405,9 +440,9 @@ if ($callback_query !== null && $callback_query != '') {
             }
             break;
         // add new category
-        case Pages::PAGE_ADMIN_ADD_CATEGORY:
+        case Pages::ADMIN_ADD_CATEGORY:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminPage();
                     break;
                 default:
@@ -419,9 +454,9 @@ if ($callback_query !== null && $callback_query != '') {
             }
             break;
         // delete product
-        case Pages::PAGE_ADMIN_DELETE_PRODUCT_CATEGORY:
+        case Pages::ADMIN_DELETE_PRODUCT_CATEGORY:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminPage();
                     break;
                 default:
@@ -432,10 +467,10 @@ if ($callback_query !== null && $callback_query != '') {
                     }
             }
             break;
-        case Pages::PAGE_ADMIN_DELETE_PRODUCT_NAME:
+        case Pages::ADMIN_DELETE_PRODUCT_NAME:
             switch ($text) {
-                case $texts->getText("back_btn"):
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_DELETE_PRODUCT_CATEGORY);
+                case $texts->get("back_btn"):
+                    showAdminChooseProductCategory(Pages::ADMIN_DELETE_PRODUCT_CATEGORY);
                     break;
                 default:
                     if (in_array($text, $products->getNamesByCategoryId($user->getCategoryId()))) {
@@ -452,9 +487,9 @@ if ($callback_query !== null && $callback_query != '') {
             }
             break;
         // delete category
-        case Pages::PAGE_ADMIN_DELETE_CATEGORY:
+        case Pages::ADMIN_DELETE_CATEGORY:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminPage();
                     break;
                 default:
@@ -469,40 +504,25 @@ if ($callback_query !== null && $callback_query != '') {
                     }
             }
             break;
-        case Pages::PAGE_ORDER_CONFIRMATION:
-            switch ($text) {
-                case $TEXTS['back_btn']:
-                    showPhoneNumberPage();
-                    break;
-                case $TEXTS['do_order']:
-                    showOrderConfirmed();
-                    ShoppingCart::clearShoppingCart($user);
-                    break;
-                case $TEXTS['cancel']:
-                    showOrderCanceled();
-                    break;
-
-            }
-            break;
         // edit price
-        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY:
+        case Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY:
             switch ($text) {
-                case $texts->getText("back_btn"):
+                case $texts->get("back_btn"):
                     showAdminPage();
                     break;
                 default:
                     if (in_array($text, $categories->getAllNames())) {
                         $categoryId = $categories->getIdByName($text);
                         $user->setCategoryId($categoryId);
-                        showAdminChooseProduct($categoryId, Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT);
+                        showAdminChooseProduct($categoryId, Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT);
                         break;
                     }
             }
             break;
-        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT:
+        case Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT:
             switch ($text) {
-                case $texts->getText("back_btn"):
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                case $texts->get("back_btn"):
+                    showAdminChooseProductCategory(Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
                     break;
                 default:
                     if (in_array($text, $products->getNamesByCategoryId($user->getCategoryId()))) {
@@ -511,10 +531,10 @@ if ($callback_query !== null && $callback_query != '') {
                     break;
             }
             break;
-        case Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE:
+        case Pages::ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE:
             switch ($text) {
                 case "❌ Bekor qilish":
-                    showAdminChooseProductCategory(Pages::PAGE_ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    showAdminChooseProductCategory(Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
                     break;
                 default:
                     $product = $products->getProduct($user->getProductId());
@@ -530,56 +550,58 @@ if ($callback_query !== null && $callback_query != '') {
     }
 }
 
+// user pages
+
 function showStart()
 {
-    global $user;
-    $user->setPage(Pages::START);
+    $page = Pages::START;
+    $sendText = "Пожалуйста выберите язык. 👇\n\nIltimos, tilni tanlang. 👇";
     $buttons = ["🇷🇺 Русский", "🇺🇿 O'zbekcha"];
-    $textToSend = "Пожалуйста выберите язык. 👇\n\nIltimos, tilni tanlang. 👇";
-    sendTextWithKeyboard($buttons, $textToSend);
+    showPage($page, $sendText, $buttons);
 }
 
 function showMainPage()
 {
-    global $user, $texts, $chatID, $ADMINS_CHAT_IDS;
-    $user->setPage(Pages::PAGE_MAIN);
+    global $texts, $chatID, $ADMINS_CHAT_IDS;
+    $page = Pages::MAIN;
     $buttons = $texts->getArrayLike("page_main_btn");
-    if (in_array($chatID, $ADMINS_CHAT_IDS)) {
-        $buttons[] = $texts->getText("page_main_admin_btn");
-    }
-    $textToSend = $texts->getText("page_main_text");
-    sendTextWithKeyboard($buttons, $textToSend);
+    if (in_array($chatID, $ADMINS_CHAT_IDS))
+        $buttons[] = $texts->get("page_main_admin_btn");
+    $textToSend = $texts->get("page_main_text");
+    showPage($page, $textToSend, $buttons);
 }
 
 function showCategoriesPage()
 {
-    global $user, $texts, $categories;
+    global $texts, $categories;
     $buttons = $categories->getAllNames();
     if (!$buttons) {
-        sendMessage($texts->getText('page_categories_text_no_category'));
+        sendMessage($texts->get('page_categories_text_no_category'));
     } else {
-        $user->setPage(Pages::PAGE_CATALOG);
-        $textToSend = $texts->getText("page_categories_text");
-        sendTextWithKeyboard($buttons, $textToSend, true);
+        $page = Pages::CATALOG;
+        $textToSend = $texts->get("page_categories_text");
+        showPage($page, $textToSend, $buttons, true);
     }
 }
 
+// categories sub pages
+
 function showProductsPage($categoryId)
 {
-    global $user, $texts, $products;
+    global $texts, $products;
     $buttons = $products->getNamesByCategoryId($categoryId);
     if (!$buttons) {
-        sendMessage($texts->getText('page_products_text_no_product'));
+        sendMessage($texts->get('page_products_text_no_product'));
     } else {
-        $user->setPage(Pages::PAGE_PRODUCTS);
-        $textToSend = $texts->getText("page_products_text");
-        sendTextWithKeyboard($buttons, $textToSend, true);
+        $page = Pages::PRODUCTS;
+        $textToSend = $texts->get("page_products_text");
+        showPage($page, $textToSend, $buttons, true, true);
     }
 }
 
 function showProduct($product, $edit = false, $editPrice = "")
 {
-    global $telegram, $chatID, $rootPath, $texts, $user, $callback_query;
+    global $telegram, $chatID, $rootPath, $texts, $callback_query;
 
     if ($product['photoUrl']) {
         $photoUrl = $rootPath . $product['photoUrl'];
@@ -593,19 +615,17 @@ function showProduct($product, $edit = false, $editPrice = "")
     } else {
         $caption .= "no info\n";
     }
-//    $content = ['chat_id' => $chatID, 'photo' => $photoUrl, 'caption' => $caption];
     $content = ['chat_id' => $chatID, 'text' => "<a href=\"{$photoUrl}\"> </a>" . $caption, 'parse_mode' => "HTML"];
     if ($product['options']) {
         $option = [];
         for ($i = 0; $i < count($product['options']); $i++) {
             $name = $product['options'][$i]['name'];
-            $price = number_format($product['options'][$i]['price'], 0, "", " ") . " " . $texts->getText('soum');
-            $option[] = [$telegram->buildInlineKeyboardButton($name . " - " . $price, '', $editPrice . $i . "")];
+            $price = number_format($product['options'][$i]['price'], 0, "", " ") . " " . $texts->get('soum');
+            $option[] = [$telegram->buildInlineKeyboardButton($name . " - " . $price, '', $editPrice . "option" . $i . ",productId" . $product['id'])];
         }
         $keyb = $telegram->buildInlineKeyBoard($option);
         $content['reply_markup'] = $keyb;
     }
-//    $telegram->sendPhoto($content);
     if ($edit) {
         $content['message_id'] = $callback_query['message']['message_id'];
         $telegram->editMessageText($content);
@@ -614,42 +634,44 @@ function showProduct($product, $edit = false, $editPrice = "")
     }
 }
 
-function showChooseCount()
+function showChooseCount($productId, $optionNum)
 {
-    global $user, $NUMBERS, $chatID, $texts, $telegram, $callback_query;
+    global $NUMBERS, $chatID, $texts, $telegram, $callback_query;
     $options = [];
     for ($cnt = 0, $i = 0; $i < 3; $i++) {
         for ($j = 0; $j < 3; $j++) {
             $cnt++;
-            $options[$i][$j] = $telegram->buildInlineKeyboardButton($NUMBERS[$cnt], '', $cnt . 'count');
+            $options[$i][$j] = $telegram->buildInlineKeyboardButton($NUMBERS[$cnt], '', $cnt . 'count,option' . $optionNum . ",productId" . $productId);
         }
     }
-    $options[] = [$telegram->buildInlineKeyboardButton($texts->getText('back_btn'), "", 'back' . $user->getProductId())];
+    $options[] = [$telegram->buildInlineKeyboardButton($texts->get('back_btn'), "", 'back' . $productId)];
     $keyb = $telegram->buildInlineKeyBoard($options);
     $content = [
         'chat_id' => $chatID,
         'message_id' => $callback_query['message']['message_id'],
-        'text' => $texts->getText('page_choose_count_text'),
+        'text' => $texts->get('page_choose_count_text'),
         'reply_markup' => $keyb
     ];
     $telegram->editMessageText($content);
 }
 
+// end categories sub pages
+
 function showCartPage()
 {
-    global $user, $telegram, $chatID, $TEXTS, $products;
+    global $user, $telegram, $chatID, $texts, $products;
 
     if (!ShoppingCart::getUserProducts($chatID)) {
         $content = [
             'chat_id' => $telegram->ChatID(),
-            'text' => $TEXTS['cart_is_empty']
+            'text' => $texts->get('cart_is_empty')
         ];
         $telegram->sendMessage($content);
     } else {
-        $user->setPage(Pages::PAGE_SHOPPING_CART);
+        $user->setPage(Pages::SHOPPING_CART);
         $content = [
             'chat_id' => $telegram->ChatID(),
-            'text' => $TEXTS['your_order']
+            'text' => $texts->get('your_order')
         ];
         $telegram->sendMessage($content);
 
@@ -662,135 +684,274 @@ function showCartPage()
             $product = $products->getProduct($productArr['id']);
             $price = ((int)($product['options'][$optionNum]['price'])) * ((int)($productCount));
             $overallPrice += $price;
-            $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $TEXTS['pieces'] . " - " . number_format($price, 0, "", " ") . " " . $TEXTS['soum'] . "\n\n";
+            $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $texts->get('pieces') . " - " . number_format($price, 0, "", " ") . " " . $texts->get('soum') . "\n\n";
         }
 
         $orderText .= "--------------------\n";
-        $orderText .= $TEXTS['overall'] . number_format($overallPrice, 0, "", " ") . " " . $TEXTS['soum'];
+        $orderText .= $texts->get('overall') . " " . number_format($overallPrice, 0, "", " ") . " " . $texts->get('soum');
 
-        $option = [
-            [$telegram->buildKeyboardButton($TEXTS['order_count']), $telegram->buildKeyboardButton($TEXTS['checkout'])],
-            [$telegram->buildKeyboardButton($TEXTS['change']), $telegram->buildKeyboardButton($TEXTS['clear'])],
-            [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-        ];
-        $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-        $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $orderText, 'parse_mode' => "HTML");
+        $buttons = [$texts->get('order_count'), $texts->get('checkout'),
+            $texts->get('change'), $texts->get('clear')];
+        sendTextWithKeyboard($buttons, $orderText, true);
+    }
+}
+
+// shopping cart sub pages
+
+function showProductsToClear($change = false)
+{
+    global $telegram, $chatID, $texts, $callback_query, $products;
+
+    $option = [];
+    foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
+        $product = $products->getProduct($productArr['id']);
+        $optionNum = $productArr['optionNum'];
+        $option[] = [$telegram->buildInlineKeyboardButton($product['name'] . " " . $product['options'][$optionNum]['name'], "", "ggg"), $telegram->buildInlineKeyboardButton("❌", "", "id" . $product['id'] . "," . $productArr['optionNum'])];
+    }
+    $option[] = [$telegram->buildInlineKeyboardButton($texts->get('close_window'), "", "closeWindow")];
+    $keyboard = $telegram->buildInlineKeyBoard($option);
+    if ($change) {
+        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'reply_markup' => $keyboard, 'text' => $texts->get('press_x_to_clear'), 'parse_mode' => "HTML");
+        $telegram->editMessageText($content);
+    } else {
+        $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $texts->get('press_x_to_clear'), 'parse_mode' => "HTML");
         $telegram->sendMessage($content);
     }
 }
 
+function showClearProducts()
+{
+    global $user, $texts;
+    ShoppingCart::clearShoppingCart($user);
+    sendMessage($texts->get('cart_is_cleared'));
+    showMainPage();
+}
+
+function showCheckoutPage()
+{
+    global $texts;
+    $page = Pages::DELIVERY_TYPE;
+    $textToSend = $texts->get('choose_delivery_type');
+    $buttons = [$texts->get('pickup'), $texts->get('delivery')];
+    showPage($page, $textToSend, $buttons, true);
+}
+
+function showFirstNamePage()
+{
+    global $texts;
+    $page = Pages::FIRST_NAME;
+    $textToSend = $texts->get('enter_your_name');
+    showPage($page, $textToSend, [], true);
+}
+
+function showPhoneNumberPage()
+{
+    global $user, $telegram, $chatID, $texts;
+    $user->setPage(Pages::PHONE_NUMBER);
+    $option = [
+        [$telegram->buildKeyboardButton($texts->get('send_contact'), true, false)],
+        [$telegram->buildKeyboardButton($texts->get('back_btn'))],
+    ];
+    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
+    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $texts->get('send_your_phone_number'), 'parse_mode' => "HTML");
+    $telegram->sendMessage($content);
+}
+
+function showLocationPage()
+{
+    global $user, $telegram, $chatID, $texts;
+    $user->setPage(Pages::LOCATION);
+    $option = [
+        [$telegram->buildKeyboardButton($texts->get('send_location'), false, true)],
+//        [$telegram->buildKeyboardButton($texts->('cant_send_location'))],
+        [$telegram->buildKeyboardButton($texts->get('back_btn'))],
+    ];
+    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
+    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $texts->get('send_your_location'), 'parse_mode' => "HTML");
+    $telegram->sendMessage($content);
+}
+
+function showConfirmOrderPage()
+{
+    global $user, $telegram, $chatID, $texts, $products;
+    $page = Pages::ORDER_CONFIRMATION;
+
+    // start building order text
+    $orderText = "<b>" . strtoupper($texts->get($user->getOrderType())) . "</b>";
+    $orderText .= "\n-------------\n\n";
+    $orderText .= $texts->get('order') . ":\n";
+
+    $overallPrice = 0;
+
+    foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
+        $productCount = $productArr['count'];
+        $optionNum = $productArr['optionNum'];
+        $product = $products->getProduct($productArr['id']);
+        $price = ((int)($product['options'][$optionNum]['price'])) * ((int)($productCount));
+        $overallPrice += $price;
+        $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $texts->get('pieces') . " - " . number_format($price, 0, "", " ") . " " . $texts->get('soum') . "\n\n";
+    }
+
+    $orderText .= "--------------------\n";
+    $orderText .= $texts->get('overall') . " " . number_format($overallPrice, 0, "", " ") . " " . $texts->get('soum');
+    $orderText .= "\n\n{$texts->get('name')} " . $user->getFirstName();
+    $orderText .= "\n{$texts->get('phone_number')}: " . $user->getPhoneNumber();
+    // end building order text
+    $user->setOrderText($orderText);
+    // save ready order text
+
+    $buttons = [$texts->get('do_order'), $texts->get('cancel')];
+    showPage($page, $orderText, $buttons, true);
+
+    if ($user->getLongitude() != "" && $user->getLatitude() != "") {
+        $latitude = str_replace(",", ".", $user->getLatitude());
+        $longitude = str_replace(",", ".", $user->getLongitude());
+        $content = array('chat_id' => $chatID, 'latitude' => $latitude, 'longitude' => $longitude);
+        $telegram->sendLocation($content);
+    }
+}
+
+function showOrderConfirmed()
+{
+    global $user, $telegram, $chatID, $texts, $ADMINS_CHAT_IDS;
+
+    $content = array('chat_id' => $chatID, 'text' => $texts->get('order_confirmed'), 'parse_mode' => "HTML");
+    $telegram->sendMessage($content);
+    showMainPage();
+
+    foreach ($ADMINS_CHAT_IDS as $admin_chat_id) {
+        $content = array('chat_id' => $admin_chat_id, 'text' => $texts->get('new_order'), 'parse_mode' => "HTML");
+        $telegram->sendMessage($content);
+        $content = array('chat_id' => $admin_chat_id, 'text' => $user->getOrderText(), 'parse_mode' => "HTML");
+        $telegram->sendMessage($content);
+        if ($user->getLongitude() != "" && $user->getLatitude() != "") {
+            $latitude = str_replace(",", ".", $user->getLatitude());
+            $longitude = str_replace(",", ".", $user->getLongitude());
+            $content = array('chat_id' => $admin_chat_id, 'latitude' => $latitude, 'longitude' => $longitude);
+            $telegram->sendLocation($content);
+        }
+    }
+}
+
+function showOrderCanceled()
+{
+    global $texts;
+    sendMessage($texts->get('order_canceled'));
+    showMainPage();
+}
+
+// end shopping cart sub pages
+
 function showCompanyPhoneNumber()
 {
-    sendMessage("Bizning telefon raqamimiz:
-+998977141171");
+    global $texts;
+    $phoneNumber = "+998977141171";
+    sendMessage($texts->get('our_phone_number') . "\n" . $phoneNumber);
 }
 
 function showAbout()
 {
-    sendMessage("👏 Assalamu alaykum. Getfor kompaniyasi botiga xush kelibsiz!
-
-🚗 Getfor kompaniyasi oziq-ovqatlarni Toshkent shahri bo'ylab uyingizgacha yetkazib beradi.
-Yetkazib berish kun bo'yi amalga oshiriladi.🥯🍞🥖🥩🍗🍫🍿☕️
-
-⏰ Ish vaqti: 8:00 dan 20:00 gacha
-
-💵 Yetkazib berish narhi: 10 000 so'm
-
-@getforbot");
+    global $texts;
+    sendMessage($texts->get('about_text'));
 }
+
+// admin pages
 
 function showAdminPage()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN);
+    $page = Pages::ADMIN;
     $buttons = ["➕ Tovar qo'shish", "➕ Kategoriya qo'shish", "➖ Tovar o'chirish", "➖ Kategoriya o'chirish",
         "Tovar narxini o'zgartirish"];
     $textToSend = "Admin Panelga xush kelibsiz!";
-    sendTextWithKeyboard($buttons, $textToSend, true);
+    showPage($page, $textToSend, $buttons, true);
 }
 
 function showAdminChooseProductCategory($page)
 {
-    global $user, $texts, $categories;
+    global $texts, $categories;
     $buttons = $categories->getAllNames();
     if (!$buttons) {
         sendMessage("Iltimos, avval kategoriya qo'shing.");
     } else {
-        $user->setPage($page);
-        $textToSend = $texts->getText("page_categories_text");
-        sendTextWithKeyboard($buttons, $textToSend, true);
+        $textToSend = $texts->get("page_categories_text");
+        showPage($page, $textToSend, $buttons, true);
     }
 }
 
-
 function showAdminSendProductPhoto()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_PHOTO);
-    sendTextWithKeyboard([], "Iltimos, tovar rasmini yuboring.", true);
+    showPage(Pages::ADMIN_PRODUCT_PHOTO, "Iltimos, tovar rasmini yuboring.", [], true);
 }
 
 function showAdminSendProductName()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_NAME);
-    sendTextWithKeyboard([], "Iltimos, tovar nomini yuboring.", true);
+    showPage(Pages::ADMIN_PRODUCT_NAME, "Iltimos, tovar nomini yuboring.", [], true);
 }
 
 function showAdminSendProductInfo()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_INFO);
-    sendTextWithKeyboard([], "Iltimos, tovar haqidagi ma'lumotni yuboring.", true);
+    showPage(Pages::ADMIN_PRODUCT_INFO, "Iltimos, tovar haqidagi ma'lumotni yuboring.", [], true);
 }
 
 function showAdminSendProductOptionsName()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_OPTIONS_NAME);
-    sendTextWithKeyboard([], "Iltimos, tovar turlarini yuboring.", true);
+    showPage(Pages::ADMIN_PRODUCT_OPTIONS_NAME, "Iltimos, tovar turlarini yuboring.", [], true);
     sendMessage("Tovar turining nomini yuboring.");
 }
 
 function showAdminSendProductOptionsPrice()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_OPTIONS_PRICE);
-    sendMessage("Tovar turining narxini yuboring.");
+    showPage(Pages::ADMIN_PRODUCT_OPTIONS_PRICE, "Tovar turining narxini yuboring.", [], true);
 }
-
 
 function showAdminSendProductOptionsConfirmOrAddMore()
 {
-    global $user, $texts;
-    $user->setPage(Pages::PAGE_ADMIN_PRODUCT_OPTIONS_CONFIRM_OR_ADD_MORE);
-    sendTextWithKeyboard([$texts->getText("btn_add_more"), $texts->getText('btn_done')], "Tur qo'shildi. {$texts->getText("btn_add_more")} yoki {$texts->getText('btn_done')} tugmasini bosing.", true);
+    global $texts;
+    $page = Pages::ADMIN_PRODUCT_OPTIONS_CONFIRM_OR_ADD_MORE;
+    $buttons = [$texts->get("btn_add_more"), $texts->get('btn_done')];
+    $textToSend = "Tur qo'shildi. {$texts->get("btn_add_more")} yoki {$texts->get('btn_done')} tugmasini bosing.";
+    showPage($page, $textToSend, $buttons, true);
 }
 
 function showAdminAddCategory()
 {
-    global $user;
-    $user->setPage(Pages::PAGE_ADMIN_ADD_CATEGORY);
-    sendTextWithKeyboard([], "Kategoriya nomini kiriting.", true);
+    showPage(Pages::ADMIN_ADD_CATEGORY, "Kategoriya nomini kiriting.", [], true);
 }
 
-function showAdminChooseProduct($categoryId, $page = Pages::PAGE_ADMIN_DELETE_PRODUCT_NAME)
+function showAdminChooseProduct($categoryId, $page = Pages::ADMIN_DELETE_PRODUCT_NAME)
 {
-    global $user, $texts, $products;
+    global $texts, $products;
     $buttons = $products->getNamesByCategoryId($categoryId);
     if (!$buttons) {
-        sendMessage($texts->getText('page_products_text_no_product'));
+        sendMessage($texts->get('page_products_text_no_product'));
     } else {
-        $user->setPage($page);
-        $textToSend = $texts->getText("page_products_text");
-        sendTextWithKeyboard($buttons, $textToSend, true);
+        $textToSend = $texts->get("page_products_text");
+        showPage($page, $textToSend, $buttons, true);
     }
 }
 
-function sendTextWithKeyboard($buttons, $text, $backBtn = false)
+function showAdminSendProductNewPrice($productName)
+{
+    global $user, $products;
+
+    $productId = $products->getIdByName($productName);
+    $user->setProductId($productId);
+
+    sendMessage("Tovar turini tanlang");
+    showProduct($products->getProduct($productId), false, "editProduct");
+}
+
+// end admin pages
+
+// helper functions
+
+function sendTextWithKeyboard($buttons, $text, $backBtn = false, $allButton = false)
 {
     global $telegram, $chatID, $texts;
     $option = [];
+    if ($allButton) {
+        $option[] = array($telegram->buildKeyboardButton($texts->get('show_all')));
+    }
     if (count($buttons) % 2 == 0) {
         for ($i = 0; $i < count($buttons); $i += 2) {
             $option[] = array($telegram->buildKeyboardButton($buttons[$i]), $telegram->buildKeyboardButton($buttons[$i + 1]));
@@ -802,11 +963,18 @@ function sendTextWithKeyboard($buttons, $text, $backBtn = false)
         $option[] = array($telegram->buildKeyboardButton(end($buttons)));
     }
     if ($backBtn) {
-        $option[] = [$telegram->buildKeyboardButton($texts->getText("back_btn"))];
+        $option[] = [$telegram->buildKeyboardButton($texts->get("back_btn"))];
     }
     $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
     $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $text, 'parse_mode' => "HTML");
     $telegram->sendMessage($content);
+}
+
+function showPage($page, $text, $buttons = [], $backBtn = false, $allButton = false)
+{
+    global $user;
+    $user->setPage($page);
+    sendTextWithKeyboard($buttons, $text, $backBtn, $allButton);
 }
 
 function init()
@@ -824,198 +992,18 @@ function sendMessage($text)
     $telegram->sendMessage(['chat_id' => $chatID, 'text' => $text]);
 }
 
-function answerCallbackEmpty()
-{
-    global $telegram;
-    $content = ['callback_query_id' => $telegram->Callback_ID(), 'text' => "", 'show_alert' => false];
-    $telegram->answerCallbackQuery($content);
-}
-
 function sendChooseButtons()
 {
     sendMessage("Iltimos, quyidagi tugmalardan birini tanlang.");
 }
 
-//function switchLanguage()
-//{
-//    global $user, $TEXTS;
-//    switch ($user->getLanguage()) {
-//        case 'uz':
-//            $TEXTS = Texts::UZ;
-//            break;
-//        case 'ru':
-//            $TEXTS = Texts::RU;
-//            break;
-//    }
-//}
-
-function showCheckoutPage()
+function logD($text)
 {
-    global $user, $telegram, $chatID, $TEXTS;
-    $user->setPage(Pages::PAGE_DELIVERY_TYPE);
-
-    $option = [
-        [$telegram->buildKeyboardButton($TEXTS['pickup']), $telegram->buildKeyboardButton($TEXTS['delivery'])],
-        [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-    ];
-    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $TEXTS['choose_delivery_type'], 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
+    global $telegram, $DEVELOPER_CHAT_ID;
+    $telegram->sendMessage(['chat_id' => $DEVELOPER_CHAT_ID, 'text' => $text]);
 }
 
-function showProductsToClear($change = false)
-{
-    global $user, $telegram, $chatID, $TEXTS, $callback_query, $products;
-
-    $option = [];
-    foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
-        $product = $products->getProduct($productArr['id']);
-        $optionNum = $productArr['optionNum'];
-        $option[] = [$telegram->buildInlineKeyboardButton($product['name'] . " " . $product['options'][$optionNum]['name'], "", "ggg"), $telegram->buildInlineKeyboardButton("❌", "", "id" . $product['id'] . ";" . $productArr['optionNum'])];
-    }
-    $option[] = [$telegram->buildInlineKeyboardButton($TEXTS['close_window'], "", "closeWindow")];
-    $keyboard = $telegram->buildInlineKeyBoard($option);
-    if ($change) {
-        $content = array('chat_id' => $chatID, 'message_id' => $callback_query['message']['message_id'], 'reply_markup' => $keyboard, 'text' => $TEXTS['press_x_to_clear'], 'parse_mode' => "HTML");
-        $telegram->editMessageText($content);
-    } else {
-        $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $TEXTS['press_x_to_clear'], 'parse_mode' => "HTML");
-        $telegram->sendMessage($content);
-    }
-}
-
-function showClearProducts()
-{
-    global $user, $telegram, $chatID, $TEXTS;
-    ShoppingCart::clearShoppingCart($user);
-    $content = [
-        'chat_id' => $telegram->ChatID(),
-        'text' => $TEXTS['cart_is_cleared']
-    ];
-    $telegram->sendMessage($content);
-    showMainPage();
-
-}
-
-function showPhoneNumberPage()
-{
-    global $user, $telegram, $chatID, $TEXTS;
-    $user->setPage(Pages::PAGE_PHONE_NUMBER);
-
-    $option = [
-        [$telegram->buildKeyboardButton($TEXTS['send_contact'], true, false)],
-        [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-    ];
-    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $TEXTS['send_your_phone_number'], 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-}
-
-function showLocationPage()
-{
-    global $user, $telegram, $chatID, $TEXTS;
-    $user->setPage(Pages::PAGE_LOCATION);
-
-    $option = [
-        [$telegram->buildKeyboardButton($TEXTS['send_location'], false, true)],
-        [$telegram->buildKeyboardButton($TEXTS['cant_send_location'])],
-        [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-    ];
-    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $TEXTS['send_your_location'], 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-}
-
-function showConfirmOrderPage()
-{
-    global $user, $telegram, $chatID, $TEXTS, $products;
-    $user->setPage(Pages::PAGE_ORDER_CONFIRMATION);
-
-    $orderText = "<b>" . strtoupper($TEXTS[$user->getOrderType()]) . "</b>";
-    $orderText .= "\n-------------\n\n";
-    $orderText .= $TEXTS['order'] . ":\n";
-
-    $overallPrice = 0;
-
-    foreach (ShoppingCart::getUserProducts($chatID) as $productArr) {
-        $productCount = $productArr['count'];
-        $optionNum = $productArr['optionNum'];
-        $product = $products->getProduct($productArr['id']);
-        $price = ((int)($product['options'][$optionNum]['price'])) * ((int)($productCount));
-        $overallPrice += $price;
-        $orderText .= $product['name'] . " " . $product['options'][$optionNum]['name'] . ", " . $productCount . " " . $TEXTS['pieces'] . " - " . number_format($price, 0, "", " ") . " " . $TEXTS['soum'] . "\n\n";
-    }
-
-    $orderText .= "--------------------\n";
-    $orderText .= $TEXTS['overall'] . number_format($overallPrice, 0, "", " ") . " " . $TEXTS['soum'];
-    $orderText .= "\n\nIsm: " . $user->getFirstName();
-    $orderText .= "\nTelefon raqam: " . $user->getPhoneNumber();
-
-    $option = [
-        [$telegram->buildKeyboardButton($TEXTS['do_order']), $telegram->buildKeyboardButton($TEXTS['cancel'])],
-        [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-    ];
-    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => $orderText, 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-
-    if ($user->getLongitude() != "" && $user->getLatitude() != "") {
-        $content = array('chat_id' => $chatID, 'latitude' => str_replace(",", ".", $user->getLatitude()), 'longitude' => str_replace(",", ".", $user->getLongitude()));
-        $telegram->sendLocation($content);
-    }
-
-    $user->setOrderText($orderText);
-}
-
-function showOrderConfirmed()
-{
-    global $user, $telegram, $chatID, $TEXTS, $ADMINS_CHAT_IDS;
-
-    $content = array('chat_id' => $chatID, 'text' => $TEXTS['order_confirmed'], 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-    showMainPage();
-
-    foreach ($ADMINS_CHAT_IDS as $admin_chat_id) {
-        $content = array('chat_id' => $admin_chat_id, 'text' => $TEXTS['new_order'], 'parse_mode' => "HTML");
-        $telegram->sendMessage($content);
-        $content = array('chat_id' => $admin_chat_id, 'text' => $user->getOrderText(), 'parse_mode' => "HTML");
-        $telegram->sendMessage($content);
-        if ($user->getLongitude() != "" && $user->getLatitude() != "") {
-            $content = array('chat_id' => $admin_chat_id, 'latitude' => $user->getLatitude(), 'longitude' => $user->getLongitude());
-            $telegram->sendLocation($content);
-        }
-    }
-}
-
-function showOrderCanceled()
-{
-    global $user, $telegram, $chatID, $TEXTS;
-
-    $content = array('chat_id' => $chatID, 'text' => $TEXTS['order_canceled'], 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-    showMainPage();
-}
-
-function showFirstNamePage()
-{
-    global $user, $telegram, $chatID, $TEXTS;
-    $user->setPage(Pages::PAGE_FIRST_NAME);
-
-    $option = [
-        [$telegram->buildKeyboardButton($TEXTS['back_btn'])],
-    ];
-    $keyboard = $telegram->buildKeyBoard($option, $onetime = false, $resize = true);
-    $content = array('chat_id' => $chatID, 'reply_markup' => $keyboard, 'text' => "Iltimos, ismingizni kiriting:", 'parse_mode' => "HTML");
-    $telegram->sendMessage($content);
-}
-
-function showAdminSendProductNewPrice($productName)
-{
-    global $user, $telegram, $chatID, $products;
-
-    $productId = $products->getIdByName($productName);
-    $user->setProductId($productId);
-
-    sendMessage("Tovar turini tanlang");
-    showProduct($products->getProduct($productId), false, "editProduct");
+function sendJSON() {
+    global $data;
+    logD(json_encode($data, JSON_PRETTY_PRINT));
 }

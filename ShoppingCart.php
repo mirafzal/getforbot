@@ -55,8 +55,7 @@ class ShoppingCart
     static function clearShoppingCart($user) {
         global $db;
         $userID = $db->real_escape_string($user->chatID);
-
-        $result = $db->query("DELETE FROM `shoppingcart` WHERE `userId` = '{$userID}'");
+        return $db->query("DELETE FROM `shoppingcart` WHERE `userId` = '{$userID}'");
     }
 
     static function deleteProduct($userId, $productId, $optionNum) {
