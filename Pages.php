@@ -35,5 +35,7 @@ class Pages
         // edit price
         ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY = 'page_admin_edit_product_price',
         ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_PRODUCT = 'page_admin_edit_product_price_choose_product',
-        ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE = 'page_admin_edit_product_price_input_price';
+        ADMIN_EDIT_PRODUCT_PRICE_INPUT_PRICE = 'page_admin_edit_product_price_input_price',
+
+        ADMIN_MAIL_ALL = 'page_admin_mail_all';
 }

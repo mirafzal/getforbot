@@ -47,6 +47,9 @@ init();
 
 ini_set('precision', 100);
 
+//    file_get_contents($rootPath . "rassilka.php?text=test");
+//    exit();
+
 // main logic
 
 // callback buttons
@@ -309,8 +312,14 @@ if ($callback_query !== null && $callback_query != '') {
                 case "➖ Kategoriya o'chirish":
                     showAdminChooseProductCategory(Pages::ADMIN_DELETE_CATEGORY);
                     break;
-                case "Tovar narxini o'zgartirish":
+                case "💲 Tovar narxini o'zgartirish":
                     showAdminChooseProductCategory(Pages::ADMIN_EDIT_PRODUCT_PRICE_CHOOSE_CATEGORY);
+                    break;
+                case "📤 Barchaga xabar yuborish":
+                    showPage(Pages::ADMIN_MAIL_ALL, "Xabar matnini kiriting", [], true);
+                    break;
+                case "📊 Statistika":
+                    showAdminStatisticsPage();
                     break;
                 case $texts->get("back_btn"):
                     showMainPage();
@@ -543,6 +552,28 @@ if ($callback_query !== null && $callback_query != '') {
                     if (Products::updateProduct($product)) {
                         sendMessage("Tovar narxi o'zgartirildi.");
                         showAdminPage();
+                    }
+                    break;
+            }
+            break;
+        case Pages::ADMIN_MAIL_ALL:
+            switch ($text) {
+                case $texts->get("back_btn"):
+                    showAdminPage();
+                    break;
+                default:
+                    if (isset($message['photo'])) {
+                        sendMessage("Rasmli xabar yaqin orada barcha foydalanuvchilarga yuboriladi.");
+                        showAdminPage();
+                        $url = $rootPath . "rassilka.php?photo=" . end($message['photo'])['file_id'];
+                        if (isset($message['caption'])) $url .= "&caption=" . base64_encode($message['caption']);
+                        file_get_contents($url);
+                    } elseif (isset($message['text'])) {
+                        sendMessage("Xabar yaqin orada barcha foydalanuvchilarga yuboriladi.");
+                        showAdminPage();
+                        $text = base64_encode($text);
+                        file_get_contents($rootPath . "rassilka.php?text=$text");
+                        exit();
                     }
                     break;
             }
@@ -860,8 +891,10 @@ function showAbout()
 function showAdminPage()
 {
     $page = Pages::ADMIN;
-    $buttons = ["➕ Tovar qo'shish", "➕ Kategoriya qo'shish", "➖ Tovar o'chirish", "➖ Kategoriya o'chirish",
-        "Tovar narxini o'zgartirish"];
+    $buttons = ["➕ Tovar qo'shish", "➕ Kategoriya qo'shish",
+        "➖ Tovar o'chirish", "➖ Kategoriya o'chirish",
+        "💲 Tovar narxini o'zgartirish", "📤 Barchaga xabar yuborish",
+        "📊 Statistika"];
     $textToSend = "Admin Panelga xush kelibsiz!";
     showPage($page, $textToSend, $buttons, true);
 }
@@ -941,6 +974,16 @@ function showAdminSendProductNewPrice($productName)
     showProduct($products->getProduct($productId), false, "editProduct");
 }
 
+function showAdminStatisticsPage()
+{
+    sendMessage(
+        "<b>Hozirgi foydalanuchilar soni:</b> " . User::getUsersCount()."\n\n"
+        ."Oxirgi marta barchaga yuborilgan xabar bo'yicha statistika:\n"
+        ."<b>Aktiv foydalanuvchilar soni:</b> " . file_get_contents("active.txt") . "\n"
+        ."<b>Botni bloklagan foydalanuvchilar soni:</b> " . file_get_contents("nonactive.txt")
+    );
+}
+
 // end admin pages
 
 // helper functions
@@ -989,7 +1032,7 @@ function init()
 function sendMessage($text)
 {
     global $telegram, $chatID;
-    $telegram->sendMessage(['chat_id' => $chatID, 'text' => $text]);
+    $telegram->sendMessage(['chat_id' => $chatID, 'text' => $text, 'parse_mode' => 'HTML']);
 }
 
 function sendChooseButtons()
@@ -1003,7 +1046,8 @@ function logD($text)
     $telegram->sendMessage(['chat_id' => $DEVELOPER_CHAT_ID, 'text' => $text]);
 }
 
-function sendJSON() {
+function sendJSON()
+{
     global $data;
     logD(json_encode($data, JSON_PRETTY_PRINT));
 }
